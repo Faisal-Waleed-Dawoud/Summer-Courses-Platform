@@ -1,24 +1,14 @@
 "use server"
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { MAX_ROWS } from "@/lib/types"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { getStudentId } from "../../courses/lib/db"
 import { cacheTag } from "next/cache"
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 const getEnrollmentRequestsCache = async(userId: string, query?: string, pageNumber?: number) => {
@@ -35,34 +25,34 @@ const getEnrollmentRequestsCache = async(userId: string, query?: string, pageNum
 
     try {
         if (query) {
-            const [result] = await pool.query(`
+            const { rows: result } = await pool.query(`
                 SELECT 
                 partner_uni_name, location, course_name, course_code, grade, 
-                DATE_FORMAT(finishing_date, '%y-%m-%d') AS finishing_date,
-                DATE_FORMAT(enrollment_date, '%y-%m-%d') AS enrollment_date,
+                TO_CHAR(finishing_date, 'YY-MM-DD') AS finishing_date,
+                TO_CHAR(enrollment_date, 'YY-MM-DD') AS enrollment_date,
                 status
                 FROM enrollments 
-                WHERE partner_uni_name LIKE CONCAT('%', ? , '%')
-                OR location LIKE CONCAT('%', ? , '%')
-                OR course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ? , '%')
-                OR status LIKE CONCAT('%', ? , '%')
-                OR grade LIKE CONCAT('%', ? , '%')
-                OR enrollment_date LIKE CONCAT('%', ? , '%')
-                OR finishing_date LIKE CONCAT('%', ? , '%') 
-                AND student_id = ?
-                LIMIT ? OFFSET ?`, [query, query, query, query, query, query, query, query, studentId, MAX_ROWS, offset])
+                WHERE (partner_uni_name LIKE CONCAT('%', $1::text , '%')
+                OR location LIKE CONCAT('%', $2::text , '%')
+                OR course_name LIKE CONCAT('%', $3::text , '%')
+                OR course_code LIKE CONCAT('%', $4::text , '%')
+                OR status LIKE CONCAT('%', $5::text , '%')
+                OR grade::text LIKE CONCAT('%', $6::text , '%')
+                OR TO_CHAR(enrollment_date, 'YY-MM-DD') LIKE CONCAT('%', $7::text , '%')
+                OR TO_CHAR(finishing_date, 'YY-MM-DD') LIKE CONCAT('%', $8::text , '%'))
+                AND student_id = $9
+                LIMIT $10 OFFSET $11`, [query, query, query, query, query, query, query, query, studentId, MAX_ROWS, offset])
                 return result
         } else {
-            const [result] = await pool.query(`
+            const { rows: result } = await pool.query(`
                 SELECT 
                 partner_uni_name, location, course_name, course_code, grade, 
-                DATE_FORMAT(finishing_date, '%y-%m-%d') AS finishing_date,
-                DATE_FORMAT(enrollment_date, '%y-%m-%d') AS enrollment_date,
+                TO_CHAR(finishing_date, 'YY-MM-DD') AS finishing_date,
+                TO_CHAR(enrollment_date, 'YY-MM-DD') AS enrollment_date,
                 status
                 FROM enrollments 
-                WHERE student_id = ?
-                LIMIT ? OFFSET ?`, [studentId, MAX_ROWS, offset])
+                WHERE student_id = $1
+                LIMIT $2 OFFSET $3`, [studentId, MAX_ROWS, offset])
                 return result
         } 
     } catch(error) {
@@ -81,22 +71,22 @@ const getEnrollmentRequestsCountCache = async(userId: string, query?: string) =>
 
     try {
         if (query) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*)
                 FROM enrollments 
-                WHERE partner_uni_name LIKE CONCAT('%', ? , '%')
-                OR location LIKE CONCAT('%', ? , '%')
-                OR course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ? , '%')
-                OR status LIKE CONCAT('%', ? , '%')
-                OR grade LIKE CONCAT('%', ? , '%')
-                OR enrollment_date LIKE CONCAT('%', ? , '%')
-                OR finishing_date LIKE CONCAT('%', ? , '%') 
-                AND student_id = ?`, [query, query, query, query, query, query, query, query, studentId]) as any[]
-                return count[0]["COUNT(*)"]
+                WHERE (partner_uni_name LIKE CONCAT('%', $1::text , '%')
+                OR location LIKE CONCAT('%', $2::text , '%')
+                OR course_name LIKE CONCAT('%', $3::text , '%')
+                OR course_code LIKE CONCAT('%', $4::text , '%')
+                OR status LIKE CONCAT('%', $5::text , '%')
+                OR grade::text LIKE CONCAT('%', $6::text , '%')
+                OR TO_CHAR(enrollment_date, 'YY-MM-DD') LIKE CONCAT('%', $7::text , '%')
+                OR TO_CHAR(finishing_date, 'YY-MM-DD') LIKE CONCAT('%', $8::text , '%'))
+                AND student_id = $9`, [query, query, query, query, query, query, query, query, studentId])
+                return count[0]["count"]
         } else {
-            const [count] = await pool.query(`SELECT COUNT(*) FROM enrollments WHERE student_id = ?`, [studentId]) as any[]
-            return count[0]["COUNT(*)"]
+            const { rows: count } = await pool.query(`SELECT COUNT(*) FROM enrollments WHERE student_id = $1`, [studentId])
+            return count[0]["count"]
         }
     } catch(error) {
         return error
@@ -106,4 +96,3 @@ const getEnrollmentRequestsCountCache = async(userId: string, query?: string) =>
 export const getEnrollmentRequestsCount = async(query?: string) => {
     return await authorizeDbCallWithUserId("course:read", getEnrollmentRequestsCountCache, query)
 }
-

@@ -1,7 +1,7 @@
 "use server"
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 import {
     PartnerRecentActivityItem,
     PartnerSummaryStats,
@@ -10,30 +10,20 @@ import {
 } from "./types"
 import { cacheTag } from "next/cache"
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 const getPartnerUniversityId = async (userId: string) => {
-    const [uni] = await pool.query(
+    const { rows: uni } = await pool.query(
         `
         SELECT partner_uni_id
         FROM partner_uni_admission
-        WHERE user_id = ?
+        WHERE user_id = $1
         `,
         [userId]
-    ) as any[]
+    )
 
     return uni[0]?.partner_uni_id
 }
@@ -43,16 +33,16 @@ const getPartnerSummaryStatsCache = async (userId: string): Promise<PartnerSumma
 
     const partnerUniId = await getPartnerUniversityId(userId)
 
-    const [requestRows] = await pool.query(
+    const { rows: requestRows } = await pool.query(
         `
         SELECT e.status, COUNT(*) AS count
         FROM enrolled_courses e
         JOIN courses c ON c.course_id = e.course_id
-        WHERE c.partner_uni_id = ?
+        WHERE c.partner_uni_id = $1
         GROUP BY e.status
         `,
         [partnerUniId]
-    ) as any[]
+    )
 
     const counts = {
         pending: 0,
@@ -70,26 +60,26 @@ const getPartnerSummaryStatsCache = async (userId: string): Promise<PartnerSumma
         if (status === "completed") counts.completed = count
     }
 
-    const [enrolledRows] = await pool.query(
+    const { rows: enrolledRows } = await pool.query(
         `
         SELECT COUNT(DISTINCT e.student_id) AS enrolled_students
         FROM enrolled_courses e
         JOIN courses c ON c.course_id = e.course_id
-        WHERE c.partner_uni_id = ?
+        WHERE c.partner_uni_id = $1
         AND e.status IN ('approved', 'completed')
         `,
         [partnerUniId]
-    ) as any[]
+    )
 
-    const [availableCoursesRows] = await pool.query(
+    const { rows: availableCoursesRows } = await pool.query(
         `
         SELECT COUNT(*) AS available_courses
         FROM courses
-        WHERE partner_uni_id = ?
+        WHERE partner_uni_id = $1
         AND course_status = 'approved'
         `,
         [partnerUniId]
-    ) as any[]
+    )
 
     const totalRequestsReceived =
         counts.pending + counts.approved + counts.rejected + counts.completed
@@ -114,18 +104,18 @@ const getRequestsPerCourseCache = async (userId: string, limit = 5): Promise<Req
 
     const partnerUniId = await getPartnerUniversityId(userId)
 
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
         `
-        SELECT c.course_name, COUNT(*) AS requests
+        SELECT c.course_name, CAST(COUNT(*) AS integer) AS requests
         FROM enrolled_courses e
         JOIN courses c ON c.course_id = e.course_id
-        WHERE c.partner_uni_id = ?
+        WHERE c.partner_uni_id = $1
         GROUP BY c.course_id, c.course_name
         ORDER BY requests DESC, c.course_name ASC
-        LIMIT ?
+        LIMIT $2
         `,
         [partnerUniId, limit]
-    ) as any[]
+    )
 
     return rows as RequestsPerCourseItem[]
 }
@@ -140,11 +130,11 @@ const getRequestsPerCourseByStatusCache = async (
 ): Promise<RequestsPerCourseByStatusItem[]> => {
     "use cache"
 
+    cacheTag("enrollments", "courses")
     const partnerUniId = await getPartnerUniversityId(userId)
-
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
         `
-        SELECT grouped.course_name, grouped.requests, grouped.status
+        SELECT grouped.course_name, CAST(grouped.requests AS integer) AS requests, grouped.status
         FROM (
             SELECT
                 c.course_name,
@@ -156,15 +146,15 @@ const getRequestsPerCourseByStatusCache = async (
                 ) AS rn
             FROM enrolled_courses e
             JOIN courses c ON c.course_id = e.course_id
-            WHERE c.partner_uni_id = ?
+            WHERE c.partner_uni_id = $1
             AND e.status IN ('pending', 'approved', 'rejected', 'completed')
             GROUP BY c.course_name, e.status
         ) grouped
-        WHERE grouped.rn <= ?
+        WHERE grouped.rn <= $2
         ORDER BY grouped.status, grouped.requests DESC, grouped.course_name ASC
         `,
         [partnerUniId, limitPerStatus]
-    ) as any[]
+    )
 
     return rows as RequestsPerCourseByStatusItem[]
 }
@@ -186,30 +176,27 @@ const getPartnerRecentActivityCache = async (
     cacheTag("enrollments")
     const partnerUniId = await getPartnerUniversityId(userId)
     
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
         `
         SELECT
         e.student_id,
-        CONCAT(u.firstName, ' ', u.lastName) AS student_name,
+        CONCAT(u."firstName", ' ', u."lastName") AS student_name,
         c.course_name,
         c.course_code,
         e.status,
-        DATE_FORMAT(
-        GREATEST(
-        COALESCE(e.enrollment_date, '1000-01-01'),
-        COALESCE(e.finishing_date, '1000-01-01')), '%y-%m-%d') as last_updated,
+        TO_CHAR(GREATEST(COALESCE(e.enrollment_date, '1000-01-01'::date), COALESCE(e.finishing_date, '1000-01-01'::date)), 'YY-MM-DD') as last_updated,
         e.grade
         FROM enrolled_courses e
         JOIN courses c ON c.course_id = e.course_id
         JOIN student s ON s.student_id = e.student_id
-        JOIN user u ON u.id = s.user_id
-        WHERE c.partner_uni_id = ?
+        JOIN "user" u ON u.id = s.user_id
+        WHERE c.partner_uni_id = $1
         ORDER BY
         last_updated DESC
-        LIMIT ?
+        LIMIT $2
         `,
         [partnerUniId, limit]
-    ) as any[]
+    )
     
     return rows as PartnerRecentActivityItem[]
 }

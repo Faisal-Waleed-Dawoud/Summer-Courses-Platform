@@ -96,5 +96,5 @@ export const formatDate = (time: number) => {
     const hour = date.getHours()
     const minutes = date.getMinutes()
     const seconds = date.getSeconds()
-    return `${year}-${month}-${day} ${hour}-${minutes}-${seconds}`
+    return `${year}-${month}-${day} ${hour}:${minutes}:${seconds}`
 }

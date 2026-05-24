@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/utils"
 import { enrollmentApprove, enrollmentReject } from "./db"
 import { revalidatePath } from "next/cache"
 import Error from "next/error"
-import { QueryError } from "mysql2"
+import { DatabaseError } from 'pg'
 import { ValidationError } from "next/dist/compiled/amphtml-validator"
 
 export const approveEnrollment = async (courseId: string, studentId: number) => {
@@ -19,7 +19,7 @@ export const approveEnrollment = async (courseId: string, studentId: number) => 
         await enrollmentApprove(courseId, +studentId, currentUser.userId)
         revalidatePath("/admission/enrollments")
         return { status: 200 }
-    } catch(error: Error | QueryError | ValidationError) {
+    } catch(error: Error | DatabaseError | ValidationError) {
         return { status: 500}
     }
 }
@@ -35,7 +35,7 @@ export const rejectEnrollment = async(courseId: string, studentId: number) => {
         await enrollmentReject(courseId, +studentId, currentUser.userId)
         revalidatePath("/admission/enrollments")
         return { status: 200 }
-    } catch(error: Error | QueryError | ValidationError) {
+    } catch(error: Error | DatabaseError | ValidationError) {
         return { status: 500}
     }
 }

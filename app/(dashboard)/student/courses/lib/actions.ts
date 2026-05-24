@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache"
 import { getStudentById } from "@/lib/db/student"
 import { Student } from "@/lib/types"
 import { EnrollmentFormErrors } from "./types"
-import { QueryError } from "mysql2"
+import { DatabaseError } from 'pg'
 import { ValidationError } from "next/dist/compiled/amphtml-validator"
 
 
@@ -34,7 +34,7 @@ export async function enroll(courseId: string) {
         await insertEnrollment(student.student_id, courseId)
         revalidatePath("/student/courses")
         return { errors: {}, status: 200 }
-    } catch (error: QueryError | Error | ValidationError) {
+    } catch (error: DatabaseError | Error | ValidationError) {
         return { status: 500, error: error instanceof Error ? error.message : String(error) }
     }
 }

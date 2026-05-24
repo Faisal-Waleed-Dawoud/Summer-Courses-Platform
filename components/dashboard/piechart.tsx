@@ -39,7 +39,8 @@ function Piechart({ props }: { props: UniversitiesCoursesNumber[] }) {
         chartConfig[item.uni_name] = { label: item.uni_name }
 
         return {
-            ...item
+            ...item,
+            courses_number: Number(item.courses_number)
         }
     })
 
@@ -74,7 +75,7 @@ function Piechart({ props }: { props: UniversitiesCoursesNumber[] }) {
                                     <ChartTooltip
                                         content={<ChartTooltipContent nameKey="courses" hideLabel />}
                                     />
-                                    <Pie data={props} dataKey="courses_number">
+                                    <Pie data={chartData} dataKey="courses_number">
                                         <LabelList
                                             dataKey="uni_name"
                                             className="fill-background"

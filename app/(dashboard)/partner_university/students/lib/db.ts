@@ -4,22 +4,12 @@ import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { authorize } from "@/lib/db/users"
 import { MAX_ROWS } from "@/lib/types"
 import { formatDate, getCurrentUser } from "@/lib/utils"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 const getEnrolledStudentsCache = async (userId:string, query?: string, pageNumber?: number) => {
@@ -30,31 +20,31 @@ const getEnrolledStudentsCache = async (userId:string, query?: string, pageNumbe
         offset = --pageNumber * MAX_ROWS;
     }
     try {
-        const [uniId] = await pool.query(`SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = ?`, [userId]) as any[]
+        const { rows: uniId } = await pool.query(`SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = $1`, [userId])
 
         if (query) {
-            const [enrollments] = await pool.query(`
-                    SELECT s.student_id, CONCAT(u.firstName, ' ', u.lastName) AS student_name, e.course_id, DATE_FORMAT(enrollment_date, '%y-%m-%d') AS enrollment_date, DATE_FORMAT(finishing_date, '%y-%m-%d') AS finishing_date, grade, course_name, course_code FROM enrolled_courses e 
+            const { rows: enrollments } = await pool.query(`
+                    SELECT s.student_id, CONCAT(u."firstName", ' ', u."lastName") AS student_name, e.course_id, TO_CHAR(enrollment_date, 'YY-MM-DD') AS enrollment_date, TO_CHAR(finishing_date, 'YY-MM-DD') AS finishing_date, grade, course_name, course_code FROM enrolled_courses e 
                     JOIN courses c 
-                    ON e.course_id = c.course_id AND partner_uni_id = ? AND status = "approved"
+                    ON e.course_id = c.course_id AND partner_uni_id = $1 AND status = 'approved'
                     JOIN student s ON s.student_id = e.student_id
-                    JOIN user u ON u.id = s.user_id
-                    WHERE s.student_id LIKE CONCAT('%', ? , '%')
-                    OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                    OR grade LIKE CONCAT('%', ? , '%')
-                    OR course_name LIKE CONCAT('%', ? , '%')
-                    OR course_code LIKE CONCAT('%', ?, '%')
-                    LIMIT ? OFFSET ?`, [uniId[0].partner_uni_id, query, query, query, query, query, MAX_ROWS, offset])
+                    JOIN "user" u ON u.id = s.user_id
+                    WHERE s.student_id::text LIKE CONCAT('%', $2::text , '%')
+                    OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $3::text , '%')
+                    OR grade LIKE CONCAT('%', $4::text , '%')
+                    OR course_name LIKE CONCAT('%', $5::text , '%')
+                    OR course_code LIKE CONCAT('%', $6::text, '%')
+                    LIMIT $7 OFFSET $8`, [uniId[0].partner_uni_id, query, query, query, query, query, MAX_ROWS, offset])
 
                 return enrollments
             } else {
-                const [enrollments] = await (pool).query(`
-                    SELECT s.student_id, CONCAT(u.firstName, ' ', u.lastName) AS student_name, e.course_id, grade, DATE_FORMAT(enrollment_date, '%y-%m-%d') AS enrollment_date, DATE_FORMAT(finishing_date, '%y-%m-%d') AS finishing_date, course_name, course_code FROM enrolled_courses e 
+                const { rows: enrollments } = await pool.query(`
+                    SELECT s.student_id, CONCAT(u."firstName", ' ', u."lastName") AS student_name, e.course_id, grade, TO_CHAR(enrollment_date, 'YY-MM-DD') AS enrollment_date, TO_CHAR(finishing_date, 'YY-MM-DD') AS finishing_date, course_name, course_code FROM enrolled_courses e 
                     JOIN courses c 
-                    ON e.course_id = c.course_id AND partner_uni_id = ? AND status = "approved"
+                    ON e.course_id = c.course_id AND partner_uni_id = $1 AND status = 'approved'
                     JOIN student s ON s.student_id = e.student_id
-                    JOIN user u ON u.id = s.user_id
-                    LIMIT ? OFFSET ?
+                    JOIN "user" u ON u.id = s.user_id
+                    LIMIT $2 OFFSET $3
                     `, [uniId[0].partner_uni_id, MAX_ROWS, offset])
             return enrollments;
         }
@@ -72,29 +62,29 @@ const getEnrollmentsCountCache = async (userId:string, query?: string) => {
     "use cache"
     cacheTag("enrollments")
     try {
-        const [uniId] = await pool.query(`SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = ?`, [userId]) as any[]
+        const { rows: uniId } = await pool.query(`SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = $1`, [userId])
 
         if (query) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*) FROM enrolled_courses e 
                 JOIN courses c 
-                ON e.course_id = c.course_id AND partner_uni_id = ? AND status = "approved"
+                ON e.course_id = c.course_id AND partner_uni_id = $1 AND status = 'approved'
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE s.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR grade LIKE CONCAT('%', ? , '%')
-                OR course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ?, '%')
-                `, [uniId[0].partner_uni_id, query, query, query, query, query]) as any[]
-            return count[0]["COUNT(*)"]
+                JOIN "user" u ON u.id = s.user_id
+                WHERE s.student_id::text LIKE CONCAT('%', $2::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $3::text , '%')
+                OR grade LIKE CONCAT('%', $4::text , '%')
+                OR course_name LIKE CONCAT('%', $5::text , '%')
+                OR course_code LIKE CONCAT('%', $6::text, '%')
+                `, [uniId[0].partner_uni_id, query, query, query, query, query])
+            return count[0]["count"]
         }
-        const [count] = await pool.query(`
+        const { rows: count } = await pool.query(`
             SELECT COUNT(*) FROM enrolled_courses e 
             JOIN courses c 
-            ON e.course_id = c.course_id AND partner_uni_id = ? AND status = "approved"
-            `, [uniId[0].partner_uni_id]) as any[]
-        return count[0]["COUNT(*)"]
+            ON e.course_id = c.course_id AND partner_uni_id = $1 AND status = 'approved'
+            `, [uniId[0].partner_uni_id])
+        return count[0]["count"]
     } catch(error) {
         return error
     }
@@ -116,16 +106,16 @@ export const gradeSet = async(studentId: number, courseId: string, grade: string
     try {
         await pool.query(`
             UPDATE enrolled_courses
-            SET status = "completed",
-            grade = ?,
-            finishing_date = ?
-            WHERE student_id = ?
-            AND course_id = ?
+            SET status = 'completed',
+            grade = $1,
+            finishing_date = $2
+            WHERE student_id = $3
+            AND course_id = $4
             `,
             [grade, finishing_date, studentId, courseId]
         )
         updateTag("enrollments")
     } catch(error) {
-        return error
+        throw error
     }
 }

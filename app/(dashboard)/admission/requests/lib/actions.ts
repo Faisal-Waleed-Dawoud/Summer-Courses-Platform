@@ -3,7 +3,7 @@ import { authorize } from "@/lib/db/users"
 import { getCurrentUser } from "@/lib/utils"
 import { acceptCourse, rejectCourse, stopProvideCourse } from "./db"
 import { revalidatePath } from "next/cache"
-import { QueryError } from "mysql2"
+import { DatabaseError } from 'pg'
 import { ValidationError } from "next/dist/compiled/amphtml-validator"
 import Error from "next/error"
 
@@ -18,7 +18,7 @@ export async function courseAccept(courseId: string) {
         await acceptCourse(currentUser.userId, courseId)
         revalidatePath("/admission/requests")
         return { status: 200 }
-    } catch(error: QueryError | Error | ValidationError) {
+    } catch(error: DatabaseError | Error | ValidationError) {
         return { status: 500}
     }
 }
@@ -34,7 +34,7 @@ export async function courseReject(courseId: string) {
         await rejectCourse(currentUser.userId, courseId)
         revalidatePath("/admission/requests")
         return { status: 200 }
-    } catch(error : QueryError | Error | ValidationError) {
+    } catch(error : DatabaseError | Error | ValidationError) {
         return { status: 500}
     }
 }
@@ -50,7 +50,7 @@ export async function courseStopProvide(courseId: string) {
         await stopProvideCourse(currentUser.userId, courseId)
         revalidatePath("/admission/requests")
         return { status: 200 }
-    } catch(error : QueryError | Error | ValidationError) {
+    } catch(error : DatabaseError | Error | ValidationError) {
         return { status: 500}
     }
 }

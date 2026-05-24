@@ -2,22 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { MAX_ROWS, Status } from "@/lib/types"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 export const insertEnrollment = async(studentId: number, courseId: string) => {
@@ -25,7 +15,7 @@ export const insertEnrollment = async(studentId: number, courseId: string) => {
         await pool.query(`
             INSERT INTO enrolled_courses
             (student_id, course_id, status)
-            VALUES (?, ?, ?)
+            VALUES ($1, $2, $3)
             `, [studentId, courseId, Status.pending])
             updateTag("enrollments")
     } catch(error) {
@@ -44,29 +34,29 @@ const getApprovedCoursesCache = async(userId: string, query?: string, pageNumber
     const studentId = await getStudentId(userId)
     try {
         if (query) {
-            const [courses] = await pool.query(`
+            const { rows: courses } = await pool.query(`
                 SELECT c.course_id, course_name, course_code, partner_uni_name, location, status, grade, student_id, user_id FROM courses c
                 JOIN partner_uni_admission p
-                ON c.partner_uni_id = p.partner_uni_id AND course_status = "approved"
+                ON c.partner_uni_id = p.partner_uni_id AND course_status = 'approved'
                 LEFT JOIN enrolled_courses e
                 ON c.course_id = e.course_id
-                AND student_id = ?
-                WHERE partner_uni_name LIKE CONCAT('%', ? , '%')
-                OR location LIKE CONCAT('%', ? , '%')
-                OR course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ? , '%')
-                OR status LIKE CONCAT('%', ? , '%')
-                LIMIT ? OFFSET ?`, [studentId, query, query, query, query, query, MAX_ROWS, offset])
+                AND student_id = $1
+                WHERE (partner_uni_name LIKE CONCAT('%', $2::text , '%')
+                OR location LIKE CONCAT('%', $3::text , '%')
+                OR course_name LIKE CONCAT('%', $4::text , '%')
+                OR course_code LIKE CONCAT('%', $5::text , '%')
+                OR status LIKE CONCAT('%', $6::text , '%'))
+                LIMIT $7 OFFSET $8`, [studentId, query, query, query, query, query, MAX_ROWS, offset])
                 return courses
         } else {
-            const [courses] = await (pool).query(`
+            const { rows: courses } = await pool.query(`
                 SELECT c.course_id, course_name, course_code, partner_uni_name, location, status, grade, student_id, user_id FROM courses c
                 JOIN partner_uni_admission p
-                ON c.partner_uni_id = p.partner_uni_id AND course_status = "approved"
+                ON c.partner_uni_id = p.partner_uni_id AND course_status = 'approved'
                 LEFT JOIN enrolled_courses e
                 ON c.course_id = e.course_id
-                AND e.student_id = ?
-                LIMIT ? OFFSET ?
+                AND e.student_id = $1
+                LIMIT $2 OFFSET $3
                 `, [studentId, MAX_ROWS, offset])
             return courses;
         }
@@ -86,28 +76,28 @@ const getApprovedCoursesCountCache = async(userId:string, query?:string) => {
     const studentId = await getStudentId(userId)
     try {
         if (query) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*) FROM courses c
                 JOIN partner_uni_admission p
-                ON c.partner_uni_id = p.partner_uni_id AND course_status = "approved"
+                ON c.partner_uni_id = p.partner_uni_id AND course_status = 'approved'
                 LEFT JOIN enrolled_courses e
                 ON c.course_id = e.course_id
-                AND student_id = ?
-                WHERE partner_uni_name LIKE CONCAT('%', ? , '%')
-                OR location LIKE CONCAT('%', ? , '%')
-                OR course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ? , '%')
-                OR status LIKE CONCAT('%', ? , '%')`, [studentId, query, query, query, query, query]) as any[]
-            return count[0]["COUNT(*)"]
+                AND student_id = $1
+                WHERE (partner_uni_name LIKE CONCAT('%', $2::text , '%')
+                OR location LIKE CONCAT('%', $3::text , '%')
+                OR course_name LIKE CONCAT('%', $4::text , '%')
+                OR course_code LIKE CONCAT('%', $5::text , '%')
+                OR status LIKE CONCAT('%', $6::text , '%'))`, [studentId, query, query, query, query, query])
+            return count[0]["count"]
         }
-        const [count] = await pool.query(`
+        const { rows: count } = await pool.query(`
             SELECT COUNT(*) FROM courses c
             JOIN partner_uni_admission p
-            ON c.partner_uni_id = p.partner_uni_id AND course_status = "approved"
+            ON c.partner_uni_id = p.partner_uni_id AND course_status = 'approved'
             LEFT JOIN enrolled_courses e
             ON c.course_id = e.course_id
-            AND student_id = ?`, [studentId]) as any[]
-        return count[0]["COUNT(*)"]
+            AND student_id = $1`, [studentId])
+        return count[0]["count"]
     } catch(error) {
         return error
     }
@@ -116,10 +106,10 @@ const getApprovedCoursesCountCache = async(userId:string, query?:string) => {
 export const getStudentId = async(userId:string) => {
     "use cache"
     try {
-        const [studentId] = await pool.query(
+        const { rows: studentId } = await pool.query(
             `SELECT student_id FROM 
-            student WHERE user_id = ?`
-        , [userId]) as any[]
+            student WHERE user_id = $1`
+        , [userId])
         return studentId[0].student_id
     } catch(error) {
         return error

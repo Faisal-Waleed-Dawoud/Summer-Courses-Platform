@@ -4,21 +4,11 @@ import { authorizeDbCall } from "@/lib/db/calls"
 import { authorize } from "@/lib/db/users"
 import { MAX_ROWS } from "@/lib/types"
 import { getCurrentUser } from "@/lib/utils"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 const getUsersCache = async (query?: string, pageNumber?:number) => {
@@ -30,17 +20,17 @@ const getUsersCache = async (query?: string, pageNumber?:number) => {
     }
     try {
         if (query) {
-            const [users] = await pool.query(`
-                SELECT * FROM user WHERE 
-                firstName LIKE CONCAT('%', ? , '%')
-                OR lastName LIKE CONCAT('%', ? , '%')
-                OR email LIKE CONCAT('%', ? , '%')
-                OR role LIKE CONCAT('%', ? , '%')
-                LIMIT ? OFFSET ?`, [query, query, query, query, MAX_ROWS, offset])
+            const { rows: users } = await pool.query(`
+                SELECT * FROM "user" WHERE 
+                ("firstName" LIKE CONCAT('%', $1::text , '%')
+                OR "lastName" LIKE CONCAT('%', $2::text , '%')
+                OR email LIKE CONCAT('%', $3::text , '%')
+                OR role LIKE CONCAT('%', $4::text , '%'))
+                LIMIT $5 OFFSET $6`, [query, query, query, query, MAX_ROWS, offset])
                 
                 return users
         } else {
-            const [users] = await (pool).query("SELECT * FROM user LIMIT ? OFFSET ?", [MAX_ROWS, offset])
+            const { rows: users } = await pool.query(`SELECT * FROM "user" LIMIT $1 OFFSET $2`, [MAX_ROWS, offset])
             
             return users;
         }
@@ -54,17 +44,17 @@ const getAllUsersCache = async(query?:string) => {
     "use cache"
     try {
         if (query) {
-            const [users] = await pool.query(`
-                SELECT firstName, lastName, email, role FROM user WHERE 
-                firstName LIKE CONCAT('%', ? , '%')
-                OR lastName LIKE CONCAT('%', ? , '%')
-                OR email LIKE CONCAT('%', ? , '%')
-                OR role LIKE CONCAT('%', ? , '%')
+            const { rows: users } = await pool.query(`
+                SELECT "firstName", "lastName", email, role FROM "user" WHERE 
+                ("firstName" LIKE CONCAT('%', $1::text , '%')
+                OR "lastName" LIKE CONCAT('%', $2::text , '%')
+                OR email LIKE CONCAT('%', $3::text , '%')
+                OR role LIKE CONCAT('%', $4::text , '%'))
                 `, [query, query, query, query])
                 
                 return users
         } else {
-            const [users] = await (pool).query("SELECT firstName, lastName, email, role FROM user")
+            const { rows: users } = await pool.query("SELECT \"firstName\", \"lastName\", email, role FROM \"user\"")
             
             return users;
         }
@@ -95,7 +85,7 @@ export const deleteUser = async(id: string) => {
     }
 
     try {
-        await pool.query("DELETE FROM user WHERE id = ?", [id])
+        await pool.query(`DELETE FROM "user" WHERE id = $1`, [id])
     } catch(error) {
         return error
     }
@@ -105,16 +95,16 @@ const getUsersCountCache = async(query?:string, ) => {
     "use cache"
     try {
         if (query) {
-            const [count] = await pool.query(`
-                SELECT COUNT(*) FROM user WHERE 
-                firstName LIKE CONCAT('%', ? , '%')
-                OR lastName LIKE CONCAT('%', ? , '%')
-                OR email LIKE CONCAT('%', ? , '%')
-                OR role LIKE CONCAT('%', ? , '%')`, [query, query, query, query]) as any[]
-            return count[0]["COUNT(*)"]
+            const { rows: count } = await pool.query(`
+                SELECT COUNT(*) FROM "user" WHERE 
+                ("firstName" LIKE CONCAT('%', $1::text , '%')
+                OR "lastName" LIKE CONCAT('%', $2::text , '%')
+                OR email LIKE CONCAT('%', $3::text , '%')
+                OR role LIKE CONCAT('%', $4::text , '%'))`, [query, query, query, query])
+            return count[0]["count"]
         }
-        const [count] = await pool.query("SELECT COUNT(*) FROM user") as any[]
-        return count[0]["COUNT(*)"]
+        const { rows: count } = await pool.query("SELECT COUNT(*) FROM \"user\"")
+        return count[0]["count"]
     } catch(error) {
         return error
     }

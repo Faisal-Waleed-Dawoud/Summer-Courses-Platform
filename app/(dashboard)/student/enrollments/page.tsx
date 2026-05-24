@@ -28,9 +28,9 @@ async function Page({searchParams} : {searchParams: Promise<{query?: string, pag
             statusColor = "bg-green-200"
         } else if (enrollmentRequests[i].status === Status.pending) {
             statusColor = "bg-yellow-200"
-        } else if (enrollmentRequests[i].status = Status.rejected) {
+        } else if (enrollmentRequests[i].status === Status.rejected) {
             statusColor = "bg-red-200"
-        } else if (enrollmentRequests[i].status = Enrollments.Completed) {
+        } else if (enrollmentRequests[i].status === Enrollments.Completed) {
             statusColor = "bg-green-500 text-white"
         }
 

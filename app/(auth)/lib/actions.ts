@@ -7,7 +7,7 @@ import { redirect } from "next/navigation"
 import { createUserSession, deleteSessionId } from "@/lib/cookies"
 import { signInFormState } from "@/app/(auth)/components/signIn"
 import { insertStudent } from "../../../lib/db/student"
-import { QueryError } from "mysql2"
+import { DatabaseError } from 'pg'
 import { ValidationError } from "next/dist/compiled/amphtml-validator"
 
 export async function signUp(prevState: signUpFormState, formData: FormData) {
@@ -148,7 +148,7 @@ export async function signIn(prevState: signInFormState, formData: FormData) {
 export async function logOut() {
     try {
         await deleteSessionId()
-    } catch (error : QueryError | Error | ValidationError) {
+    } catch (error : DatabaseError | Error | ValidationError) {
         return error
     }
     redirect("/login")

@@ -1,21 +1,11 @@
 'use server'
 
 import { Roles } from "../types"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 export const insertSession = async(userId: string, sessionToken: string, expDate: Date, role: Roles) => {
@@ -23,8 +13,8 @@ export const insertSession = async(userId: string, sessionToken: string, expDate
     try {
         await (pool).query(`
             INSERT INTO session 
-            (userId, token, expDate, role) 
-            VALUES( ? , ? , ? , ?)`, [userId, sessionToken, expDate, role])
+            ("userId", token, "expDate", role) 
+            VALUES( $1 , $2 , $3 , $4)`, [userId, sessionToken, expDate, role])
     } catch (error) {
         return error
     }
@@ -34,7 +24,7 @@ export const insertSession = async(userId: string, sessionToken: string, expDate
 
 export const deleteSessionToken = async(sessionToken: string) => {
     try {
-        await pool.query(`DELETE FROM session WHERE token = ? `, [sessionToken])
+        await pool.query(`DELETE FROM session WHERE token = $1 `, [sessionToken])
 
     } catch (error) {
         return error

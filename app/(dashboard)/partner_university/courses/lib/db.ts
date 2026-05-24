@@ -2,22 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { MAX_ROWS, Status } from "@/lib/types"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 
@@ -30,20 +20,20 @@ const getCoursesCache = async (userId:string, query?: string, pageNumber?:number
         offset = --pageNumber * MAX_ROWS;
     }
     try {
-        const [uniId] = await pool.query(`SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = ?`, [userId]) as any[]
+        const { rows: uniId } = await pool.query(`SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = $1`, [userId])
         if (query) {
-            const [courses] = await pool.query(`
+            const { rows: courses } = await pool.query(`
                 SELECT * FROM courses WHERE 
-                course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ? , '%')
-                OR course_status LIKE CONCAT('%', ? , '%')
-                AND partner_uni_id = ?
-                LIMIT ? OFFSET ?`, [query, query, query, uniId[0].partner_uni_id, MAX_ROWS, offset])
+                (course_name LIKE CONCAT('%', $1::text , '%')
+                OR course_code LIKE CONCAT('%', $2::text , '%')
+                OR course_status LIKE CONCAT('%', $3::text , '%'))
+                AND partner_uni_id = $4
+                LIMIT $5 OFFSET $6`, [query, query, query, uniId[0].partner_uni_id, MAX_ROWS, offset])
                 
                 return courses
         } else {
-            const [courses] = await (pool).query(`
-                SELECT * FROM courses WHERE partner_uni_id = ? LIMIT ? OFFSET ?
+            const { rows: courses } = await pool.query(`
+                SELECT * FROM courses WHERE partner_uni_id = $1 LIMIT $2 OFFSET $3
                 `, [uniId[0].partner_uni_id, MAX_ROWS, offset])
             return courses;
         }
@@ -61,20 +51,20 @@ const getCoursesCountCache = async(userId:string, query?:string) => {
     "use cache"
     cacheTag("courses")
     try {
-        const [uniId] = await pool.query(`
-            SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = ?`, [userId]) as any[]
+        const { rows: uniId } = await pool.query(`
+            SELECT partner_uni_id FROM partner_uni_admission WHERE user_id = $1`, [userId])
         if (query) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*) FROM courses WHERE 
-                course_name LIKE CONCAT('%', ? , '%')
-                OR course_code LIKE CONCAT('%', ? , '%')
-                OR course_status LIKE CONCAT('%', ? , '%')
-                AND partner_uni_id = ?`, [uniId[0].partner_uni_id, query, query, query]) as any[]
-            return count[0]["COUNT(*)"]
+                (course_name LIKE CONCAT('%', $1::text , '%')
+                OR course_code LIKE CONCAT('%', $2::text , '%')
+                OR course_status LIKE CONCAT('%', $3::text , '%'))
+                AND partner_uni_id = $4`, [query, query, query, uniId[0].partner_uni_id])
+            return count[0]["count"]
         }
-        const [count] = await pool.query("SELECT COUNT(*) FROM courses WHERE partner_uni_id = ?", [uniId[0].partner_uni_id]) as any[]
+        const { rows: count } = await pool.query("SELECT COUNT(*) FROM courses WHERE partner_uni_id = $1", [uniId[0].partner_uni_id])
 
-        return count[0]["COUNT(*)"]
+        return count[0]["count"]
     } catch(error) {
         return error
     }
@@ -89,7 +79,7 @@ export const insertCourse = async(courseName: string, courseCode: string, syllab
         await pool.query(`
             INSERT INTO 
             courses (course_name, course_code, syllabus, course_status, admission_id, partner_uni_id)
-            VALUES(?, ?, ?, ?, ?, ?)`, 
+            VALUES($1, $2, $3, $4, $5, $6)`, 
             [courseName, courseCode, syllabus, status, admissionId, partnerUniId])
             updateTag("courses")
     } catch(error) {
@@ -99,8 +89,8 @@ export const insertCourse = async(courseName: string, courseCode: string, syllab
 
 export const getUniquePartner = async(userId:string) => {
     try {
-        const [partner] = await pool.query(`
-            SELECT partner_uni_id, partner_uni_name FROM partner_uni_admission WHERE user_id = ?`, [userId]) as any[]
+        const { rows: partner } = await pool.query(`
+            SELECT partner_uni_id, partner_uni_name FROM partner_uni_admission WHERE user_id = $1`, [userId])
 
         return partner[0]
     } catch(error) {

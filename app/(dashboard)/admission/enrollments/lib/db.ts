@@ -3,22 +3,12 @@
 import { authorizeDbCall } from "@/lib/db/calls"
 import { MAX_ROWS, Status } from "@/lib/types"
 import { formatDate } from "@/lib/utils"
-import mysql from "mysql2/promise"
+import { Pool } from 'pg'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : undefined,
-    database: process.env.MYSQL_DATABASE,
-    connectionLimit: 10,
-    maxIdle: 5,
-    idleTimeout: 60000,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-    waitForConnections: true,
-    queueLimit: 0,
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 })
 
 const getEnrollmentsCache = async (query?: string, status?: string, pageNumber?: number) => {
@@ -30,66 +20,66 @@ const getEnrollmentsCache = async (query?: string, status?: string, pageNumber?:
     }
     try {
         if (query && status) {
-            const [courses] = await pool.query(`
+            const { rows: courses } = await pool.query(`
                 SELECT e.*,
-                DATE_FORMAT(e.finishing_date, '%y-%m-%d') AS finishing_date,
-                DATE_FORMAT(e.enrollment_date, '%y-%m-%d') AS enrollment_date,
-                CONCAT(u.firstName, ' ', u.lastName) AS student_name
+                TO_CHAR(e.finishing_date, 'YY-MM-DD') AS finishing_date,
+                TO_CHAR(e.enrollment_date, 'YY-MM-DD') AS enrollment_date,
+                CONCAT(u."firstName", ' ', u."lastName") AS student_name
                 FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
+                JOIN "user" u ON u.id = s.user_id
                 WHERE (
-                e.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR e.location LIKE CONCAT('%', ? , '%')
-                OR e.course_name LIKE CONCAT('%', ? , '%')
-                OR e.course_code LIKE CONCAT('%', ? , '%')
-                OR e.partner_uni_name LIKE CONCAT('%', ? , '%'))
-                AND e.status = ?
-                LIMIT ? OFFSET ?`, [query, query, query, query, query, query, status, MAX_ROWS, offset])
+                e.student_id::text LIKE CONCAT('%', $1::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $2::text , '%')
+                OR e.location LIKE CONCAT('%', $3::text , '%')
+                OR e.course_name LIKE CONCAT('%', $4::text , '%')
+                OR e.course_code LIKE CONCAT('%', $5::text , '%')
+                OR e.partner_uni_name LIKE CONCAT('%', $6::text , '%'))
+                AND e.status = $7
+                LIMIT $8 OFFSET $9`, [query, query, query, query, query, query, status, MAX_ROWS, offset])
 
             return courses
         } else if (query) {
-            const [courses] = await pool.query(`
+            const { rows: courses } = await pool.query(`
                 SELECT e.*,
-                DATE_FORMAT(e.finishing_date, '%y-%m-%d') AS finishing_date,
-                DATE_FORMAT(e.enrollment_date, '%y-%m-%d') AS enrollment_date,
-                CONCAT(u.firstName, ' ', u.lastName) AS student_name
+                TO_CHAR(e.finishing_date, 'YY-MM-DD') AS finishing_date,
+                TO_CHAR(e.enrollment_date, 'YY-MM-DD') AS enrollment_date,
+                CONCAT(u."firstName", ' ', u."lastName") AS student_name
                 FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE e.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR e.location LIKE CONCAT('%', ? , '%')
-                OR e.course_name LIKE CONCAT('%', ? , '%')
-                OR e.course_code LIKE CONCAT('%', ? , '%')
-                OR e.partner_uni_name LIKE CONCAT('%', ? , '%')
-                LIMIT ? OFFSET ?`, [query, query, query, query, query, query, MAX_ROWS, offset])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE e.student_id::text LIKE CONCAT('%', $1::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $2::text , '%')
+                OR e.location LIKE CONCAT('%', $3::text , '%')
+                OR e.course_name LIKE CONCAT('%', $4::text , '%')
+                OR e.course_code LIKE CONCAT('%', $5::text , '%')
+                OR e.partner_uni_name LIKE CONCAT('%', $6::text , '%')
+                LIMIT $7 OFFSET $8`, [query, query, query, query, query, query, MAX_ROWS, offset])
 
             return courses
         } else if (status) {
-            const [courses] = await pool.query(`
+            const { rows: courses } = await pool.query(`
                 SELECT e.*,
-                DATE_FORMAT(e.finishing_date, '%y-%m-%d') AS finishing_date,
-                DATE_FORMAT(e.enrollment_date, '%y-%m-%d') AS enrollment_date,
-                CONCAT(u.firstName, ' ', u.lastName) AS student_name
+                TO_CHAR(e.finishing_date, 'YY-MM-DD') AS finishing_date,
+                TO_CHAR(e.enrollment_date, 'YY-MM-DD') AS enrollment_date,
+                CONCAT(u."firstName", ' ', u."lastName") AS student_name
                 FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE e.status = ?
-                LIMIT ? OFFSET ?`, [status, MAX_ROWS, offset])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE e.status = $1
+                LIMIT $2 OFFSET $3`, [status, MAX_ROWS, offset])
 
             return courses
         } else {
-            const [courses] = await (pool).query(`
+            const { rows: courses } = await pool.query(`
                 SELECT e.*,
-                DATE_FORMAT(e.finishing_date, '%y-%m-%d') AS finishing_date,
-                DATE_FORMAT(e.enrollment_date, '%y-%m-%d') AS enrollment_date,
-                CONCAT(u.firstName, ' ', u.lastName) AS student_name
+                TO_CHAR(e.finishing_date, 'YY-MM-DD') AS finishing_date,
+                TO_CHAR(e.enrollment_date, 'YY-MM-DD') AS enrollment_date,
+                CONCAT(u."firstName", ' ', u."lastName") AS student_name
                 FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                LIMIT ? OFFSET ?`, [MAX_ROWS, offset])
+                JOIN "user" u ON u.id = s.user_id
+                LIMIT $1 OFFSET $2`, [MAX_ROWS, offset])
             return courses;
         }
 
@@ -107,48 +97,48 @@ export const getEnrollmentsCountCache = async (query?: string, status?: string) 
     cacheTag("enrollments")
     try {
         if (query && status) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*) FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE (e.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR e.location LIKE CONCAT('%', ? , '%')
-                OR e.course_name LIKE CONCAT('%', ? , '%')
-                OR e.course_code LIKE CONCAT('%', ? , '%')
-                OR e.partner_uni_name LIKE CONCAT('%', ? , '%'))
-                AND e.status = ?`, [query, query, query, query, query, query, status])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE (e.student_id::text LIKE CONCAT('%', $1::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $2::text , '%')
+                OR e.location LIKE CONCAT('%', $3::text , '%')
+                OR e.course_name LIKE CONCAT('%', $4::text , '%')
+                OR e.course_code LIKE CONCAT('%', $5::text , '%')
+                OR e.partner_uni_name LIKE CONCAT('%', $6::text , '%'))
+                AND e.status = $7`, [query, query, query, query, query, query, status])
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (count as any)[0]["COUNT(*)"]
+            return (count as any)[0]["count"]
         } else if (query) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*) FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE e.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR e.location LIKE CONCAT('%', ? , '%')
-                OR e.course_name LIKE CONCAT('%', ? , '%')
-                OR e.course_code LIKE CONCAT('%', ? , '%')
-                OR e.partner_uni_name LIKE CONCAT('%', ? , '%')`, [query, query, query, query, query, query])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE e.student_id::text LIKE CONCAT('%', $1::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $2::text , '%')
+                OR e.location LIKE CONCAT('%', $3::text , '%')
+                OR e.course_name LIKE CONCAT('%', $4::text , '%')
+                OR e.course_code LIKE CONCAT('%', $5::text , '%')
+                OR e.partner_uni_name LIKE CONCAT('%', $6::text , '%')`, [query, query, query, query, query, query])
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (count as any)[0]["COUNT(*)"]
+            return (count as any)[0]["count"]
         } else if (status) {
-            const [count] = await pool.query(`
+            const { rows: count } = await pool.query(`
                 SELECT COUNT(*) FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE e.status = ?`, [status])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE e.status = $1`, [status])
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (count as any)[0]["COUNT(*)"]
+            return (count as any)[0]["count"]
         }
-        const [count] = await pool.query(`
+        const { rows: count } = await pool.query(`
             SELECT COUNT(*) FROM enrollments e
             JOIN student s ON s.student_id = e.student_id
-            JOIN user u ON u.id = s.user_id
+            JOIN "user" u ON u.id = s.user_id
             `)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (count as any)[0]["COUNT(*)"]
+        return (count as any)[0]["count"]
     } catch (error) {
         return error
     }
@@ -164,7 +154,7 @@ const getAllEnrollmentsCache = async (query?: string, status?: string) => {
     cacheTag("enrollments")
     const selectedColumns = `
     e.student_id,
-    CONCAT(u.firstName, ' ', u.lastName) AS student_name,
+    CONCAT(u."firstName", ' ', u."lastName") AS student_name,
     e.grade,
     e.enrollment_date,
     e.finishing_date,
@@ -176,48 +166,48 @@ const getAllEnrollmentsCache = async (query?: string, status?: string) => {
     
     try {
         if (query && status) {
-            const [enrollments] = await pool.query(`
+            const { rows: enrollments } = await pool.query(`
                 SELECT ${selectedColumns}
                 FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE (e.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR e.location LIKE CONCAT('%', ? , '%')
-                OR e.course_name LIKE CONCAT('%', ? , '%')
-                OR e.course_code LIKE CONCAT('%', ? , '%')
-                OR e.partner_uni_name LIKE CONCAT('%', ? , '%'))
-                AND e.status = ?`, [query, query, query, query, query, query, status])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE (e.student_id::text LIKE CONCAT('%', $1::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $2::text , '%')
+                OR e.location LIKE CONCAT('%', $3::text , '%')
+                OR e.course_name LIKE CONCAT('%', $4::text , '%')
+                OR e.course_code LIKE CONCAT('%', $5::text , '%')
+                OR e.partner_uni_name LIKE CONCAT('%', $6::text , '%'))
+                AND e.status = $7`, [query, query, query, query, query, query, status])
                 return enrollments
         } else if (query) {
-            const [enrollments] = await pool.query(`
+            const { rows: enrollments } = await pool.query(`
                 SELECT ${selectedColumns}
                 FROM enrollments e
                 JOIN student s ON s.student_id = e.student_id
-                JOIN user u ON u.id = s.user_id
-                WHERE e.student_id LIKE CONCAT('%', ? , '%')
-                OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', ? , '%')
-                OR e.location LIKE CONCAT('%', ? , '%')
-                OR e.course_name LIKE CONCAT('%', ? , '%')
-                OR e.course_code LIKE CONCAT('%', ? , '%')
-                OR e.partner_uni_name LIKE CONCAT('%', ? , '%')`, [query, query, query, query, query, query])
+                JOIN "user" u ON u.id = s.user_id
+                WHERE e.student_id::text LIKE CONCAT('%', $1::text , '%')
+                OR CONCAT(u."firstName", ' ', u."lastName") LIKE CONCAT('%', $2::text , '%')
+                OR e.location LIKE CONCAT('%', $3::text , '%')
+                OR e.course_name LIKE CONCAT('%', $4::text , '%')
+                OR e.course_code LIKE CONCAT('%', $5::text , '%')
+                OR e.partner_uni_name LIKE CONCAT('%', $6::text , '%')`, [query, query, query, query, query, query])
                 
                 return enrollments
             } else if (status) {
-                const [enrollments] = await pool.query(`
+                const { rows: enrollments } = await pool.query(`
                     SELECT ${selectedColumns}
                     FROM enrollments e
                     JOIN student s ON s.student_id = e.student_id
-                    JOIN user u ON u.id = s.user_id
-                    WHERE e.status = ?`, [status])
+                    JOIN "user" u ON u.id = s.user_id
+                    WHERE e.status = $1`, [status])
                     
                     return enrollments;
                 } else {
-                    const [enrollments] = await pool.query(`
+                    const { rows: enrollments } = await pool.query(`
                         SELECT ${selectedColumns}
                         FROM enrollments e
                         JOIN student s ON s.student_id = e.student_id
-                        JOIN user u ON u.id = s.user_id
+                        JOIN "user" u ON u.id = s.user_id
                         `)
                         
                         return enrollments;
@@ -240,15 +230,15 @@ export const enrollmentApprove = async (courseId: string, studentId: number, adm
     try {
         await pool.query(`
             UPDATE enrolled_courses
-            SET status = ?,
-            admission_id = ?,
-            enrollment_date = ?
-            WHERE course_id = ?
-            AND student_id = ?
+            SET status = $1,
+            admission_id = $2,
+            enrollment_date = $3
+            WHERE course_id = $4
+            AND student_id = $5
             `, [Status.approved, admissionId, enrollmentDate, courseId, studentId])
             updateTag("enrollments")
         } catch (error) {
-            return error
+            throw error
         }
     }
 
@@ -256,13 +246,13 @@ export const enrollmentApprove = async (courseId: string, studentId: number, adm
         try {
             await pool.query(`
                 UPDATE enrolled_courses
-                SET status = ?,
-                admission_id = ?
-                WHERE course_id = ? 
-                AND student_id = ?
+                SET status = $1,
+                admission_id = $2
+                WHERE course_id = $3 
+                AND student_id = $4
                 `, [Status.rejected, admissionId, courseId, studentId])
                 updateTag("enrollments")
             } catch (error) {
-                return error
+                throw error
             }
         }
