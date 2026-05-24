@@ -3,16 +3,25 @@ import { revalidatePath } from "next/cache"
 import { CreateCourseErrors, CreateCourseFormState, partner } from "./types"
 import { getCurrentUser } from "@/lib/utils"
 import { authorize } from "@/lib/db/users"
-import ImageKit from "imagekit";
+import { getUploadAuthParams } from "@imagekit/next/server"
 import { getUniquePartner, insertCourse } from "./db"
 import { Status } from "@/lib/types"
 
+export async function getAuthParams() {
+    const currentUser = await getCurrentUser({ fullUser: false, redirectIfNotFound: true })
+    const admission = await getUniquePartner(currentUser.userId) as partner
+    const folderName = admission.partner_uni_name.replaceAll(" ", "-")
 
-const imageKit = new ImageKit({
-    publicKey: process.env.IMAGEKIT_PUBLIC_KEY!,
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY!,
-    urlEndpoint: process.env.NEXT_PUBLIC_URL_ENDPOINT!
-})
+    const auth = getUploadAuthParams({
+        publicKey: process.env.IMAGEKIT_PUBLIC_KEY!,
+        privateKey: process.env.IMAGEKIT_PRIVATE_KEY!
+    })
+    return {
+        ...auth,
+        publicKey: process.env.IMAGEKIT_PUBLIC_KEY!,
+        folder: `/${folderName}`
+    }
+}
 
 export async function createCourse(prevState: CreateCourseFormState | undefined, formData: FormData) {
     const currentUser = await getCurrentUser({ fullUser: false, redirectIfNotFound: true })
@@ -26,7 +35,7 @@ export async function createCourse(prevState: CreateCourseFormState | undefined,
 
     const courseName = formData.get("course-name") as string
     const courseCode = formData.get("course-code") as string
-    const syllabus = formData.get("syllabus") as File
+    const syllabusUrl = formData.get("syllabus-url") as string
 
     // Validate Input
 
@@ -54,10 +63,8 @@ export async function createCourse(prevState: CreateCourseFormState | undefined,
         errors.courseCode = "Last Name Cannot have special characters"
     }
 
-    if (syllabus.size === 0) {
+    if (!syllabusUrl) {
         errors.syllabus = "Upload the syllabus"
-    } else if (!syllabus.name.match(/.pdf/)) {
-        errors.syllabus = "The uploaded file should be pdf"
     }
 
 
@@ -67,23 +74,15 @@ export async function createCourse(prevState: CreateCourseFormState | undefined,
 
     try {
         const admission = await getUniquePartner(currentUser.userId) as partner
-        const folderName = admission.partner_uni_name.replaceAll(" ", "-")
-        const buffer = await syllabus.arrayBuffer()
-        const file = Buffer.from(buffer)
-        const result = await imageKit.upload({
-            fileName: syllabus.name,
-            file: file,
-            folder: `/${folderName}`
-        })
 
-        if (result.url.length > 100) {
+        if (syllabusUrl.length > 100) {
             errors.syllabus = "Shorten the file name"
         }
 
         if (Object.keys(errors).length >= 1) {
             return { errors, payload: formData, status: 400 }
         }
-        await insertCourse(courseName, courseCode, result.url, Status.pending, admission.partner_uni_id, null)
+        await insertCourse(courseName, courseCode, syllabusUrl, Status.pending, admission.partner_uni_id, null)
 
         revalidatePath("/partner_university/courses")
         return { errors: {}, payload: formData, status: 200 }

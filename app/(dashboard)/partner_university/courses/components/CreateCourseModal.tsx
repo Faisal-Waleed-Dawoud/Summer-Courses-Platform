@@ -6,9 +6,12 @@ import Modal from '@/components/modal'
 import Submit from '@/components/submit'
 import Form from 'next/form'
 import { CreateCourseFormState } from '../lib/types'
-import { createCourse } from '../lib/actions'
+import { createCourse, getAuthParams } from '../lib/actions'
 import { File, UploadIcon, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import Spinner from '@/components/spinner'
+import { upload } from '@imagekit/next'
 
 
 
@@ -43,7 +46,58 @@ function CreateCourseModal({ handleOpen }: { handleOpen: () => void }) {
     }
 
 
-    const [state, formAction] = useActionState(createCourse, initalState)
+    const [isUploading, setIsUploading] = useState(false)
+    const [state, formAction, isPending] = useActionState(createCourse, initalState)
+
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault()
+        const formElement = e.currentTarget
+        if (!file) {
+            toast.error("Please upload the syllabus")
+            return
+        }
+
+        setIsUploading(true)
+
+        try {
+            const auth = await getAuthParams()
+            if (!auth) {
+                throw new Error("Could not authenticate file upload")
+            }
+            
+            const result = await upload({
+                file,
+                fileName: file.name,
+                publicKey: auth.publicKey,
+                signature: auth.signature,
+                token: auth.token,
+                expire: auth.expire,
+                folder: auth.folder
+            })
+
+            if (!result.url) {
+                throw new Error("Upload succeeded, but no URL was returned")
+            }
+            const syllabusUrl = result.url
+
+            
+            const submitData = new FormData(formElement)
+            submitData.set("syllabus-url", syllabusUrl)
+
+            React.startTransition(() => {
+                formAction(submitData)
+            })
+
+            setFile(null)
+            if (fileRef.current) {
+                fileRef.current.value = ""
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : String(err))
+        } finally {
+            setIsUploading(false)
+        }
+    }
 
     useEffect(() => {
         if (state?.status === 200) {
@@ -56,7 +110,7 @@ function CreateCourseModal({ handleOpen }: { handleOpen: () => void }) {
 
     return (
         <Modal title='Create Course' handleOpen={handleOpen}>
-            <Form action={formAction} onSubmit={() => setFile(null)} className='flex flex-col gap-2 justify-between'>
+            <form onSubmit={handleSubmit} className='flex flex-col gap-2 justify-between'>
                 {state?.errors?.unknownError && <p className='text-red-500'>{state.errors.unknownError}</p>}
                 <div className='grid columns-2 gap-3'>
                     <div className='flex gap-2 items-center'>
@@ -96,9 +150,12 @@ function CreateCourseModal({ handleOpen }: { handleOpen: () => void }) {
                                 <button className='hover:text-white hover:bg-red-400 rounded-full w-10 h-10 flex items-center justify-center cursor-pointer duration-300' onClick={handleClearFile}><X></X></button>
                             </div>}
                     </div>
-                    <Submit variant='default' text='Create Course'></Submit>
+                    <Button disabled={isUploading || isPending} variant='default' type='submit'>
+                        {(isUploading || isPending) && <Spinner />}
+                        Create Course
+                    </Button>
                 </div>
-            </Form>
+            </form>
         </Modal>
     )
 }
