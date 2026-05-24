@@ -1,17 +1,8 @@
 'use server'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { cacheTag, updateTag } from "next/cache"
-
-
-
-// These details (host, user, etc...) should be stored in .env file and never 
-// exposed in the client side
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
 
 
 export const insertUser = async (firstName: string, lastName: string, email: string, password: string, salt: string, role: string) => {

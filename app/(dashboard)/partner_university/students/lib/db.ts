@@ -4,13 +4,10 @@ import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { authorize } from "@/lib/db/users"
 import { MAX_ROWS } from "@/lib/types"
 import { formatDate, getCurrentUser } from "@/lib/utils"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 const getEnrolledStudentsCache = async (userId:string, query?: string, pageNumber?: number) => {
     "use cache"

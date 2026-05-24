@@ -1,12 +1,9 @@
 'use server'
 
 import { Roles } from "../types"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 export const insertSession = async(userId: string, sessionToken: string, expDate: Date, role: Roles) => {
     

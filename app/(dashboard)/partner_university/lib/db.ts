@@ -1,7 +1,7 @@
 "use server"
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import {
     PartnerRecentActivityItem,
     PartnerSummaryStats,
@@ -10,10 +10,7 @@ import {
 } from "./types"
 import { cacheTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 const getPartnerUniversityId = async (userId: string) => {
     const { rows: uni } = await pool.query(

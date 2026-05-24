@@ -1,12 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 export const insertStudent = async(studentId: number, gpa: number | null, level: number | null, userId: string) => {
     try {

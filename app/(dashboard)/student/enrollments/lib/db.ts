@@ -1,15 +1,12 @@
 "use server"
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { MAX_ROWS } from "@/lib/types"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { getStudentId } from "../../courses/lib/db"
 import { cacheTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 const getEnrollmentRequestsCache = async(userId: string, query?: string, pageNumber?: number) => {
     "use cache"

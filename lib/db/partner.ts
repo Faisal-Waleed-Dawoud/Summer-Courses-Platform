@@ -1,12 +1,9 @@
 'use server'
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 export const insertPartner = async(uniName: string, location: string, userId: string) => {
     try {

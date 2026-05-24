@@ -4,12 +4,9 @@
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { getStudentId } from "../courses/lib/db"
 import { cacheTag } from "next/cache"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 const getEnrollmentStatusCountsCache = async (userId: string) => {
     "use cache"

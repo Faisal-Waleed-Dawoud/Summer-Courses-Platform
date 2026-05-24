@@ -3,13 +3,10 @@
 import { authorizeDbCall } from "@/lib/db/calls"
 import { MAX_ROWS, Status } from "@/lib/types"
 import { formatDate } from "@/lib/utils"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 const getEnrollmentsCache = async (query?: string, status?: string, pageNumber?: number) => {
     "use cache"

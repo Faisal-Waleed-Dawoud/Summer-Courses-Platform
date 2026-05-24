@@ -2,13 +2,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { authorizeDbCallWithUserId } from "@/lib/db/calls"
 import { MAX_ROWS, Status } from "@/lib/types"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 import { cacheTag, updateTag } from "next/cache"
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 export const insertEnrollment = async(studentId: number, courseId: string) => {
     try {

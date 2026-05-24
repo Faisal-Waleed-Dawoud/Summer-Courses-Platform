@@ -4,12 +4,9 @@ import { authorizeDbCall } from "@/lib/db/calls"
 import { authorize } from "@/lib/db/users"
 import { MAX_ROWS } from "@/lib/types"
 import { getCurrentUser } from "@/lib/utils"
-import { Pool } from 'pg'
+import pool from '@/lib/db/pool'
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-})
+
 
 const getUsersCache = async (query?: string, pageNumber?:number) => {
     "use cache"
