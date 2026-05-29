@@ -22,6 +22,6 @@ Traditional summer course registration is:
 
 
 ## Demo
-You can try the website: https://summer-courses-platform.netlify.app/
+You can try the website: https://summer-courses-platform.vercel.app
 * For admission, use the email: u.preview@upm.edu.sa with the password: testuser1
 * For the partner university admission, use the email: admission@preview.com with the password: testuser2
